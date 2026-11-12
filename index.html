@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>蒙特卡罗方法手搓圆形 · 交互演示</title>
+<style>
+  :root{
+    --bg:#f5f7fa;
+    --card:#ffffff;
+    --line:#e3e8ef;
+    --text:#1f2933;
+    --muted:#62707c;
+    --blue:#2f6fb2;
+    --blue-soft:#eaf1f9;
+    --red:#d94f4f;
+    --green:#2f9e6b;
+    --gray:#b8c2ce;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;padding:24px 16px 40px;
+    background:var(--bg);color:var(--text);
+    font-family:"Microsoft YaHei","PingFang SC",system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;}
+  header h1{font-size:22px;margin:0 0 6px;letter-spacing:.5px;}
+  header p{margin:0 0 20px;color:var(--muted);font-size:13.5px;line-height:1.7;}
+  header code{background:var(--blue-soft);color:var(--blue);padding:1px 5px;border-radius:4px;font-family:Consolas,monospace;}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(16,32,48,.04);}
+  .stage{padding:14px;}
+  canvas{display:block;width:100%;height:auto;border-radius:8px;}
+  .panel{padding:16px 16px 18px;display:flex;flex-direction:column;gap:14px;}
+  .big{background:var(--blue-soft);border-radius:10px;padding:12px 14px;}
+  .big .k{font-size:12px;color:var(--blue);letter-spacing:.4px;}
+  .big .v{font-family:Consolas,"Courier New",monospace;font-size:27px;font-weight:600;
+          color:#12395f;line-height:1.25;margin-top:2px;}
+  .big .s{font-size:12px;color:var(--muted);margin-top:4px;}
+  .rows{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;}
+  .rows div{background:#fafbfd;border:1px solid var(--line);border-radius:8px;padding:8px 10px;}
+  .rows span{display:block;font-size:11.5px;color:var(--muted);}
+  .rows b{font-family:Consolas,monospace;font-size:15px;font-weight:600;}
+  .ctrl{display:flex;flex-direction:column;gap:8px;}
+  .ctrl label{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;}
+  input[type=range]{width:100%;accent-color:var(--blue);}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  button{
+    font-family:inherit;font-size:13px;padding:9px 10px;border-radius:9px;cursor:pointer;
+    border:1px solid var(--line);background:#fff;color:var(--text);transition:.15s;
+  }
+  button:hover{border-color:#c3cede;background:#fbfcfe;}
+  button.primary{background:var(--blue);border-color:var(--blue);color:#fff;}
+  button.primary:hover{background:#28619e;}
+  #spark{height:64px;}
+  .sparkbox{border-top:1px dashed var(--line);padding-top:10px;}
+  .sparkbox .t{font-size:11.5px;color:var(--muted);margin-bottom:4px;}
+  footer{margin-top:20px;font-size:12.5px;color:var(--muted);line-height:1.9;}
+  footer b{color:var(--text);}
+  .warn{background:#fff8f0;border:1px solid #f4ddc0;color:#8a5a1f;border-radius:10px;
+        padding:10px 12px;font-size:12.5px;line-height:1.75;margin-top:10px;}
+  @media (max-width:860px){
+    .grid{grid-template-columns:1fr;}
+    header h1{font-size:19px;}
+    .big .v{font-size:24px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>蒙特卡罗方法 · 手搓圆形</h1>
+    <p>
+      在边长 2r 的正方形里随机撒点，点落进内切圆的概率等于面积比
+      <code>πr² / 4r² = π/4</code>。数出圆内点数 k，就有
+      <code>π ≈ 4k/N</code>、<code>圆面积 ≈ 4r²·k/N</code>。
+      拖动下方滑块开始撒点，看估计值怎样慢慢收拢到真值。
+    </p>
+  </header>
+
+  <div class="grid">
+    <section class="card stage">
+      <canvas id="cv" width="620" height="620"></canvas>
+    </section>
+
+    <aside class="card panel">
+      <div class="big">
+        <div class="k">π 的当前估计值</div>
+        <div class="v" id="piVal">—</div>
+        <div class="s" id="piSub">尚未开始撒点</div>
+      </div>
+
+      <div class="rows">
+        <div><span>投点数 N</span><b id="nVal">0</b></div>
+        <div><span>圆内点数 k</span><b id="kVal">0</b></div>
+        <div><span>圆内占比 k/N</span><b id="rVal">—</b></div>
+        <div><span>圆面积估计 S</span><b id="areaVal">—</b></div>
+      </div>
+
+      <div class="ctrl">
+        <label><span>每帧撒点数</span><em id="spdVal">300</em></label>
+        <input id="spd" type="range" min="1" max="3000" step="1" value="300">
+        <div class="btns">
+          <button id="toggle" class="primary">开始撒点</button>
+          <button id="burst">撒 10 万点</button>
+          <button id="reset">重置</button>
+          <button id="fast">精确模式</button>
+        </div>
+      </div>
+
+      <div class="sparkbox">
+        <div class="t">估计值收敛过程（横轴对数刻度，虚线为真值 π）</div>
+        <canvas id="spark" width="600" height="128" style="height:64px"></canvas>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    <b>为什么这样算是对的：</b>设正方形面积 4r²，圆面积 πr²。点均匀落在正方形内，落进圆的概率
+    p = πr²/4r² = π/4，与 r 无关 —— 这就是"手搓圆形"能估出 π 的原因。<br>
+    <b>精度：</b>k 服从二项分布，故 π 估计的标准差 σ ≈ 1.6415/√N。想让误差从 0.01 降到 0.001，
+    点数要从约 2.7 万涨到约 270 万 —— 蒙特卡罗的精度是"用算力换"的。
+    <div class="warn">
+      <b>常见错误：</b>用「极坐标 + 角度均匀」生成点（θ 取 [0,2π] 均匀、半径取 [0,r] 均匀）会让点向圆心堆积，
+      面积估计系统性偏小。正确做法是 x、y 各自独立均匀，或半径取 r·√u（u 均匀）。
+    </div>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const PI = Math.PI;
+  const INSIDE = "#d94f4f";
+  const OUTSIDE = "#b8c2ce";
+  const MILESTONES = [10,30,100,300,1000,3000,10000,30000,100000,300000,1000000,3000000,10000000];
+
+  const cv = document.getElementById("cv");
+  const ctx = cv.getContext("2d");
+  const spark = document.getElementById("spark");
+  const sctx = spark.getContext("2d");
+
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let W = 620, H = 620, pad = 26, side = 560;
+  let N = 0, k = 0;
+  let running = false, raf = null, speed = 300;
+  let mi = 0;
+  const history = [];
+
+  // 已撒点的缓存（x, y, 是否在圆内）。窗口尺寸变化时重绘用得到。
+  // 上限 30 万个：再多的点重绘会卡，统计照常累加，只是不参与重绘。
+  const CAP = 300000;
+  const buf = new Float32Array(CAP * 3);
+  let bufLen = 0;
+
+  // ---------- 坐标映射：数学坐标 [-1,1]² -> 画布像素 ----------
+  function toPx(x, y){
+    return [pad + (x + 1) / 2 * side, pad + (1 - y) / 2 * side];
+  }
+
+  function resize(){
+    const cssW = cv.parentElement.clientWidth - 28;
+    const size = Math.max(280, Math.min(cssW, 620));
+    W = H = size;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.style.width = size + "px";
+    cv.style.height = size + "px";
+    cv.width = Math.round(size * dpr);
+    cv.height = Math.round(size * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pad = Math.round(size * 0.045);
+    side = size - pad * 2;
+    redrawAll();
+  }
+
+  // ---------- 底板：正方形 + 内切圆 ----------
+  function drawBase(){
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, W, H);
+
+    // 正方形
+    ctx.strokeStyle = "#cfd8e3";
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(pad, pad, side, side);
+
+    // 圆的填充（很浅，便于区分内外）
+    ctx.beginPath();
+    ctx.arc(pad + side / 2, pad + side / 2, side / 2, 0, Math.PI * 2);
+    ctx.fillStyle = "#fdf5f5";
+    ctx.fill();
+    ctx.strokeStyle = "#2f6fb2";
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // 圆心与半径标注
+    const [cx, cy] = toPx(0, 0);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#2f6fb2";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + side / 2, cy);
+    ctx.strokeStyle = "#9db8d3";
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#5b6b7b";
+    ctx.font = "12px Consolas, monospace";
+    ctx.fillText("r = 1", cx + 8, cy - 7);
+    ctx.fillText("2r × 2r 的正方形", pad + 6, pad - 8);
+  }
+
+  // ---------- 撒点 ----------
+  function addPoints(count){
+    const ins = [], outs = [];
+    for (let i = 0; i < count; i++){
+      const x = Math.random() * 2 - 1;
+      const y = Math.random() * 2 - 1;
+      const inside = x * x + y * y <= 1;
+      if (inside) { ins.push(x, y); k++; } else { outs.push(x, y); }
+      if (bufLen < CAP){
+        buf[bufLen * 3] = x;
+        buf[bufLen * 3 + 1] = y;
+        buf[bufLen * 3 + 2] = inside ? 1 : 0;
+        bufLen++;
+      }
+      N++;
+      while (mi < MILESTONES.length && N >= MILESTONES[mi]){
+        history.push({ n: N, pi: 4 * k / N });
+        mi++;
+        drawSpark();
+      }
+    }
+    const s = side / 2;
+    ctx.fillStyle = OUTSIDE;
+    for (let i = 0; i < outs.length; i += 2){
+      ctx.fillRect(pad + (outs[i] + 1) * s - 0.9, pad + (1 - outs[i + 1]) * s - 0.9, 1.8, 1.8);
+    }
+    ctx.fillStyle = INSIDE;
+    for (let i = 0; i < ins.length; i += 2){
+      ctx.fillRect(pad + (ins[i] + 1) * s - 0.9, pad + (1 - ins[i + 1]) * s - 0.9, 1.8, 1.8);
+    }
+    updateStats();
+  }
+
+  // 尺寸变化后按缓存重绘，避免"窗口一变就清零"的尴尬
+  function redrawAll(){
+    drawBase();
+    if (bufLen === 0) return;
+    const s = side / 2;
+    for (let pass = 0; pass < 2; pass++){
+      ctx.fillStyle = pass === 0 ? OUTSIDE : INSIDE;
+      for (let i = 0; i < bufLen; i++){
+        if (buf[i * 3 + 2] !== pass) continue;
+        ctx.fillRect(pad + (buf[i * 3] + 1) * s - 0.9,
+                     pad + (1 - buf[i * 3 + 1]) * s - 0.9, 1.8, 1.8);
+      }
+    }
+  }
+
+  // ---------- 数据面板 ----------
+  const el = {
+    pi: document.getElementById("piVal"),
+    piSub: document.getElementById("piSub"),
+    n: document.getElementById("nVal"),
+    kk: document.getElementById("kVal"),
+    r: document.getElementById("rVal"),
+    area: document.getElementById("areaVal")
+  };
+
+  function updateStats(){
+    el.n.textContent = N.toLocaleString("en-US");
+    el.kk.textContent = k.toLocaleString("en-US");
+    if (N === 0){
+      el.pi.textContent = "—";
+      el.piSub.textContent = "尚未开始撒点";
+      el.r.textContent = "—";
+      el.area.textContent = "—";
+      return;
+    }
+    const piHat = 4 * k / N;
+    const err = Math.abs(piHat - PI);
+    const sigma = 1.6415 / Math.sqrt(N);
+    el.pi.textContent = piHat.toFixed(6);
+    el.piSub.textContent = "真值 3.141593 ｜ 绝对误差 " + err.toExponential(2) +
+                           " ｜ 理论 σ " + sigma.toExponential(2);
+    el.r.textContent = (k / N).toFixed(6);
+    el.area.textContent = piHat.toFixed(5);       // r=1 时圆面积 = π
+  }
+
+  // ---------- 收敛小图（对数横轴）----------
+  function drawSpark(){
+    const w = spark.width / dpr, h = spark.height / dpr;
+    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sctx.clearRect(0, 0, w, h);
+    const lo = PI - 0.4, hi = PI + 0.4;
+    // 真值虚线
+    const yTrue = h - (PI - lo) / (hi - lo) * h;
+    sctx.beginPath();
+    sctx.setLineDash([5, 4]);
+    sctx.moveTo(0, yTrue);
+    sctx.lineTo(w, yTrue);
+    sctx.strokeStyle = "#2f9e6b";
+    sctx.lineWidth = 1.4;
+    sctx.stroke();
+    sctx.setLineDash([]);
+
+    if (history.length < 2) return;
+    const x0 = Math.log10(10), x1 = Math.log10(1e7);
+    const px = n => (Math.log10(Math.max(n, 10)) - x0) / (x1 - x0) * (w - 4) + 2;
+    const py = v => h - Math.max(0, Math.min(1, (v - lo) / (hi - lo))) * h;
+    sctx.beginPath();
+    history.forEach((p, i) => {
+      const X = px(p.n), Y = py(p.pi);
+      if (i === 0) sctx.moveTo(X, Y); else sctx.lineTo(X, Y);
+    });
+    sctx.strokeStyle = "#2f6fb2";
+    sctx.lineWidth = 1.8;
+    sctx.stroke();
+    const last = history[history.length - 1];
+    sctx.beginPath();
+    sctx.arc(px(last.n), py(last.pi), 3, 0, Math.PI * 2);
+    sctx.fillStyle = "#2f6fb2";
+    sctx.fill();
+  }
+
+  // ---------- 主循环 ----------
+  function loop(){
+    if (!running) return;
+    addPoints(speed);
+    raf = requestAnimationFrame(loop);
+  }
+
+  function reset(){
+    N = 0; k = 0; mi = 0;
+    bufLen = 0;
+    history.length = 0;
+    drawBase();
+    drawSpark();
+    updateStats();
+  }
+
+  // ---------- 交互 ----------
+  const toggle = document.getElementById("toggle");
+  toggle.addEventListener("click", () => {
+    running = !running;
+    toggle.textContent = running ? "暂停" : "继续撒点";
+    toggle.classList.toggle("primary", !running);
+    if (running) loop(); else if (raf) cancelAnimationFrame(raf);
+  });
+
+  document.getElementById("burst").addEventListener("click", () => addPoints(100000));
+  document.getElementById("reset").addEventListener("click", () => {
+    reset();
+    running = false;
+    toggle.textContent = "开始撒点";
+    toggle.classList.add("primary");
+    if (raf) cancelAnimationFrame(raf);
+  });
+  document.getElementById("fast").addEventListener("click", () => {
+    // 一次性撒 200 万点（不逐点动画），直接给一个高精度结果
+    addPoints(2000000);
+  });
+
+  const spd = document.getElementById("spd");
+  const spdVal = document.getElementById("spdVal");
+  spd.addEventListener("input", () => {
+    speed = parseInt(spd.value, 10);
+    spdVal.textContent = speed;
+  });
+
+  let rt = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(rt);
+    rt = setTimeout(resize, 180);
+  });
+
+  resize();
+})();
+</script>
+</body>
+</html>
